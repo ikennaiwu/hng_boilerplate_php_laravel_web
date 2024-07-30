@@ -1,0 +1,140 @@
+---
+- name: Setup and Deploy Laravel Application
+  hosts: hng
+  become: yes
+  vars:
+    pg_password: "Ikenna25"  # Replace with your actual password
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - git
+          - nginx
+          - php
+          - php-fpm
+          - php-mbstring
+          - php-xml
+          - php-pgsql
+          - postgresql
+          - composer
+        state: present
+
+    - name: Create secrets directory
+      file:
+        path: /var/secrets
+        state: directory
+        owner: hng
+        group: hng
+        mode: '0700'
+
+    - name: Save PostgreSQL credentials
+      copy:
+        dest: /var/secrets/pg_pw.txt
+        content: "{{ pg_password }}"
+        owner: hng
+        group: hng
+        mode: '0600'
+
+    - name: Start and enable PostgreSQL
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Set Git safe directory
+      command: git config --global --add safe.directory /opt/stage_5b
+
+    - name: Clone the Laravel boilerplate repository
+      git:
+        repo: "https://github.com/ikennaiwu/hng_boilerplate_php_laravel_web.git"
+        dest: "/opt/stage_5b"
+        version: "HEAD"
+        force: yes
+
+    - name: Set ownership of application files
+      file:
+        path: /opt/stage_5b
+        state: directory
+        owner: hng
+        group: hng
+        recurse: yes
+
+    - name: Install PHP dependencies with Composer
+      command: composer install
+      args:
+        chdir: /opt/stage_5b
+
+    - name: Copy .env.example to .env
+      command: cp .env.example .env
+      args:
+        chdir: /opt/stage_5b
+
+    - name: Generate Laravel application key
+      command: php artisan key:generate
+      args:
+        chdir: /opt/stage_5b
+
+    - name: Configure environment variables
+      lineinfile:
+        path: /opt/stage_5b/.env
+        regexp: '^DB_PASSWORD='
+        line: "DB_PASSWORD={{ pg_password }}"
+        state: present
+
+    - name: Migrate the database
+      command: php artisan migrate
+      args:
+        chdir: /opt/stage_5b
+
+    - name: Setup Nginx configuration
+      copy:
+        dest: /etc/nginx/sites-available/stage_5b
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              root /opt/stage_5b/public;
+              index index.php index.html;
+
+              location / {
+                  try_files $uri $uri/ /index.php?$query_string;
+              }
+
+              location ~ \.php$ {
+                  include snippets/fastcgi-php.conf;
+                  fastcgi_pass unix:/var/run/php/php-fpm.sock;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  include fastcgi_params;
+              }
+
+              location ~ /\.ht {
+                  deny all;
+              }
+
+              error_log /var/log/stage_5b/error.log;
+              access_log /var/log/stage_5b/access.log;
+          }
+      notify: Reload Nginx
+
+    - name: Enable Nginx site configuration
+      file:
+        src: /etc/nginx/sites-available/stage_5b
+        dest: /etc/nginx/sites-enabled/stage_5b
+        state: link
+
+    - name: Remove default Nginx site configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+  handlers:
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded
