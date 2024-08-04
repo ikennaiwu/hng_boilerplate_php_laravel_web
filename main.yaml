@@ -24,7 +24,7 @@
           - composer
         state: present
 
- - name: Create hng user
+   - name: Create hng user
    user:
     name: hng
     comment: "HNG User"
