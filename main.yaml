@@ -24,6 +24,15 @@
           - composer
         state: present
 
+        - name: Create hng user
+  user:
+    name: hng
+    comment: "HNG User"
+    shell: /bin/bash
+    groups: sudo
+    state: present
+    create_home: yes
+
     - name: Create secrets directory
       file:
         path: /var/secrets
