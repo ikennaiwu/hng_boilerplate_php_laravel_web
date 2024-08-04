@@ -24,8 +24,8 @@
           - composer
         state: present
 
-        - name: Create hng user
-  user:
+ - name: Create hng user
+   user:
     name: hng
     comment: "HNG User"
     shell: /bin/bash
